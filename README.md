@@ -104,16 +104,27 @@ A Flask-based web application that provides a streamlined workflow for processin
 ## Project Structure
 smart-doc-scanner-ocr-ai/
 ├── app.py # Main Flask application logic
+
 ├── requirements.txt # Python dependencies
+
 ├── templates/
+
 │ └── index.html # HTML template for the UI
+
 ├── static/
+
 │ ├── css/
+
 │ │ └── style.css # Custom CSS styles
+
 │ └── js/
+
 │ └── script.js # JavaScript for frontend interactivity
+
 ├── uploads/ # (Created automatically) Directory for uploaded images
+
 ├── processed/ # (Created automatically) Directory for processed images
+
 └── README.md # This file
 ## Choosing a Llama Model on Replicate
 
