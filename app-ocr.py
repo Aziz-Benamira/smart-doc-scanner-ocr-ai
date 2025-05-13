@@ -8,6 +8,9 @@ from flask import Flask, render_template, request, redirect, url_for, send_from_
 import pytesseract # For OCR
 import replicate   # For Llama API via Replicate
 from PIL import Image # Often needed by pytesseract
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # --- Helper Functions (Image Processing) ---
 def order_points(pts):
@@ -121,7 +124,7 @@ ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'webp'}
 
 # --- Replicate API Token (Hardcoded) ---
 # !! WARNING: Replace placeholder with your actual key. Only use hardcoding for strictly local development. !!
-REPLICATE_API_TOKEN = "r8_SqA0KefWLrNR03dMK3HAMnCJ3luCMAb3MYMhS" # <--- PASTE YOUR REPLICATE TOKEN HERE
+REPLICATE_API_TOKEN = os.environ.get("REPLICATE_API_TOKEN") # <--- PASTE YOUR REPLICATE TOKEN HERE
 
 # --- Tesseract Configuration (Optional) ---
 # If Python can't find Tesseract automatically, uncomment and set the correct path below.
