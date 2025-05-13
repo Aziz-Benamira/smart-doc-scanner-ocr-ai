@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pro Document Scanner</title>
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-T3c6CoIi6uLrA9TneNEoa7RxnatzjcDSCmG1MXxSR1GAsXEV/Dwwykc2MPK8M2HN" crossorigin="anonymous">
+    <!-- Font Awesome (Optional Icons) -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" integrity="sha512-DTOQO9RWCH3ppGqcWaEA1BIZOC6xxalwEsw9c2QQeAIftl+Vegovlnee1c9QX4TctnWMn13TZye+giMm8e2LwA==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+    <!-- Your Custom CSS -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="container mt-4 mb-5">
+        <header class="text-center mb-5">
+            <h1 class="display-5"><i class="fas fa-file-alt me-2"></i> Document Scanner Pro</h1>
+            <p class="lead text-muted">Upload, scan, enhance, and extract text from your documents.</p>
+        </header>
+
+        <!-- Flash Messages Area -->
+        <div class="row justify-content-center mb-3">
+            <div class="col-md-9 col-lg-8">
+                {% with messages = get_flashed_messages(with_categories=true) %}
+                    {% if messages %}
+                        {% for category, message in messages %}
+                        {# Map flash categories to Bootstrap alert classes #}
+                        <div class="alert alert-{{ 'danger' if category == 'error' else ('warning' if category == 'warning' else 'success') }} alert-dismissible fade show shadow-sm" role="alert">
+                           <i class="fas {% if category == 'error' %}fa-exclamation-triangle{% elif category == 'warning' %}fa-exclamation-circle{% else %}fa-check-circle{% endif %} me-2"></i>
+                            {{ message }}
+                            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                        </div>
+                        {% endfor %}
+                    {% endif %}
+                {% endwith %}
+            </div>
+        </div>
+
+        <!-- Upload Form Card -->
+        <div class="row justify-content-center">
+            <div class="col-md-9 col-lg-8">
+                <div class="card shadow-sm mb-4 form-card">
+                    <div class="card-body p-4">
+                        <form id="upload-form" method="post" enctype="multipart/form-data">
+                            <!-- Hidden actual file input -->
+                            <input type="file" id="file" name="file" accept="image/png, image/jpeg, image/webp" required hidden>
+
+                            <!-- Custom drag-and-drop / browse area -->
+                            <div id="upload-area" class="text-center p-4 mb-3" title="Click or drag image here">
+                                <i class="fas fa-cloud-upload-alt fa-3x text-secondary mb-3 upload-icon"></i>
+                                <p class="mb-2"><strong>Drag & drop</strong> your image here or</p>
+                                <button type="button" id="browse-button" class="btn btn-outline-primary btn-sm">
+                                    <i class="fas fa-folder-open me-1"></i> Browse Files
+                                </button>
+                                <p id="filename-display" class="text-muted mt-2 small mb-0"></p>
+                            </div>
+
+                            <!-- Image Preview Area -->
+                            <div id="image-preview-container" class="mb-3 text-center" style="display: none;">
+                                <p class="small mb-1 fw-bold">Image Preview:</p>
+                                <img id="image-preview" src="#" alt="Image Preview" class="img-thumbnail mx-auto d-block"/>
+                            </div>
+
+                            <!-- Filter Selection -->
+                            <div class="mb-3">
+                                <label for="filter" class="form-label fw-bold"><i class="fas fa-filter me-1"></i> Output Filter:</label>
+                                <select id="filter" name="filter" class="form-select">
+                                     <option value="adaptive_threshold" {% if not selected_filter or selected_filter == 'adaptive_threshold' %}selected{% endif %}>Adaptive Threshold (B&W Scan)</option>
+                                     <option value="grayscale" {% if selected_filter == 'grayscale' %}selected{% endif %}>Grayscale</option>
+                                     <option value="color" {% if selected_filter == 'color' %}selected{% endif %}>Color (Warped Only)</option>
+                                </select>
+                            </div>
+
+                            <!-- Submit Button -->
+                            <div class="d-grid">
+                                <button type="submit" id="submit-button" class="btn btn-primary btn-lg">
+                                    <!-- Spinner (hidden initially) -->
+                                    <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true" style="display: none;"></span>
+                                    <!-- Icon -->
+                                    <i class="fas fa-cogs me-1 submit-icon"></i>
+                                    <!-- Text -->
+                                    <span class="submit-text">Scan Document</span>
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div> <!-- End Card -->
+            </div>
+        </div>
+
+        <!-- Results Area (Only shown if processing happened) -->
+        {% if original_filename %}
+        <hr class="my-5">
+        <h2 class="text-center mb-4">Processing Results</h2>
+
+        <!-- Image Results Row -->
+        <div class="row g-4 justify-content-center mb-4">
+            <!-- Original Image Card -->
+            <div class="col-md-6 col-lg-5">
+                <div class="card h-100 shadow-sm result-card">
+                     <div class="card-header text-center fw-bold">Original Image</div>
+                    <div class="card-body text-center p-3">
+                        <a href="{{ url_for('serve_original_image', filename=original_filename) }}" target="_blank" title="View full size">
+                            <img src="{{ url_for('serve_original_image', filename=original_filename) }}" alt="Original Image" class="img-fluid rounded mb-3 result-image">
+                        </a>
+                    </div>
+                </div>
+            </div>
+            <!-- Processed Image Card (Only shown if successful) -->
+            {% if processed_filename %}
+            <div class="col-md-6 col-lg-5">
+                 <div class="card h-100 shadow-sm result-card">
+                     <div class="card-header text-center fw-bold">Processed Image</div>
+                    <div class="card-body text-center p-3">
+                         <a href="{{ url_for('serve_processed_image', filename=processed_filename) }}" target="_blank" title="View full size">
+                            <img src="{{ url_for('serve_processed_image', filename=processed_filename) }}" alt="Processed Image" class="img-fluid rounded mb-3 result-image">
+                         </a>
+                         <a href="{{ url_for('download_processed_image', filename=processed_filename) }}" class="btn btn-success btn-sm" download>
+                             <i class="fas fa-download me-2"></i>Download
+                         </a>
+                    </div>
+                </div>
+            </div>
+            {% else %}
+             <!-- Placeholder/Message if processed image failed -->
+             <div class="col-md-6 col-lg-5">
+                 <div class="card h-100 shadow-sm result-card border-warning">
+                     <div class="card-header text-center fw-bold text-warning">Processed Image</div>
+                     <div class="card-body text-center p-3 d-flex align-items-center justify-content-center">
+                         <p class="text-muted mb-0"><i class="fas fa-exclamation-triangle me-2"></i> Image processing failed or did not produce an output.</p>
+                    </div>
+                </div>
+             </div>
+            {% endif %}
+        </div>
+
+        <!-- Text Results Row (Only shown if OCR or AI attempted) -->
+        {% if raw_ocr_text is not none or ai_enhanced_text is not none or ocr_error or ai_error %}
+        <div class="row g-4 justify-content-center">
+            <!-- Raw OCR Text Card -->
+            <div class="col-md-6">
+                <div class="card h-100 shadow-sm result-card">
+                    <div class="card-header fw-bold d-flex justify-content-between align-items-center">
+                       <span><i class="fas fa-align-left me-2"></i> Raw OCR Text</span>
+                        {# Show copy button only if there's text and no fatal error #}
+                        {% if raw_ocr_text and not ocr_error %}
+                        <button type="button" class="btn btn-sm btn-outline-secondary copy-btn" data-clipboard-target="#raw-ocr-output" title="Copy raw text">
+                            <i class="far fa-copy me-1"></i> Copy
+                        </button>
+                        {% endif %}
+                    </div>
+                    <div class="card-body p-3">
+                        {# Show OCR error if it occurred #}
+                        {% if ocr_error %}
+                            <div class="alert alert-warning small p-2 mb-2">{{ ocr_error }}</div>
+                        {% endif %}
+                        {# Display OCR text or appropriate message #}
+                        <pre id="raw-ocr-output" class="ocr-output bg-light p-2 rounded border small"><code>{{ raw_ocr_text if raw_ocr_text else ('No text could be extracted by OCR.' if not ocr_error else 'OCR process failed.') }}</code></pre>
+                    </div>
+                </div>
+            </div>
+
+            <!-- AI Enhanced Text Card -->
+            <div class="col-md-6">
+                 <div class="card h-100 shadow-sm result-card">
+                    <div class="card-header fw-bold d-flex justify-content-between align-items-center">
+                        <span><i class="fas fa-magic me-2"></i> AI Enhanced Text (Llama)</span>
+                         {# Show copy button only if AI text exists and no fatal AI error #}
+                         {% if ai_enhanced_text and not ai_error %}
+                         <button type="button" class="btn btn-sm btn-outline-secondary copy-btn" data-clipboard-target="#ai-output" title="Copy enhanced text">
+                             <i class="far fa-copy me-1"></i> Copy
+                         </button>
+                         {% endif %}
+                    </div>
+                    <div class="card-body p-3">
+                        {# Show AI configuration status message if not configured #}
+                        {% if not ai_client_configured %}
+                             <div class="alert alert-info small p-2 mb-2">AI Enhancement requires a valid Replicate API Token to be set in the `app.py` code.</div> {# <-- Updated Message #}
+                        {% endif %}
+                        {# Show AI processing error if it occurred #}
+                        {% if ai_error %}
+                             <div class="alert alert-warning small p-2 mb-2">{{ ai_error }}</div>
+                        {% endif %}
+                        {# Display AI text or appropriate message based on context #}
+                        <pre id="ai-output" class="ocr-output bg-light p-2 rounded border small"><code>{% if ai_enhanced_text %}{{ ai_enhanced_text }}{% elif not ai_client_configured %}AI feature disabled.{% elif ocr_error %}AI skipped due to OCR error.{% elif ai_error %}AI processing failed or was skipped.{% elif raw_ocr_text is none %}AI skipped (No OCR text available).{% elif not raw_ocr_text.strip() %}AI skipped (OCR text was empty).{% else %}AI processing did not return text.{% endif %}</code></pre>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endif %} {# End text results check #}
+        {% endif %} {# End check for any results (original_filename) #}
+
+    </div> <!-- End Container -->
+
+    <footer class="text-center text-muted mt-5 mb-4">
+        <small>Document Scanner App © 2024</small>
+    </footer>
+
+    <!-- Bootstrap JS Bundle -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js" integrity="sha384-C6RzsynM9kWDrMNeT87bh95OGNyZPhcTNXj1NW7RuBCsyN/o0jlpcV8Qyq46cDfL" crossorigin="anonymous"></script>
+    <!-- Your Custom JS -->
+    <script src="{{ url_for('static', filename='js/script.js') }}"></script>
+</body>
+</html>

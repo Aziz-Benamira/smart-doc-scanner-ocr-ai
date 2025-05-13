@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pro Document Scanner</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-T3c6CoIi6uLrA9TneNEoa7RxnatzjcDSCmG1MXxSR1GAsXEV/Dwwykc2MPK8M2HN" crossorigin="anonymous">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" integrity="sha512-DTOQO9RWCH3ppGqcWaEA1BIZOC6xxalwEsw9c2QQeAIftl+Vegovlnee1c9QX4TctnWMn13TZye+giMm8e2LwA==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="container mt-4">
+        <header class="text-center mb-5">
+            <h1 class="display-5"><i class="fas fa-file-alt me-2"></i> Document Scanner Pro</h1>
+            <p class="lead text-muted">Upload, scan, and enhance your documents easily.</p>
+        </header>
+
+        <!-- Flash Messages -->
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                <div class="row justify-content-center mb-3">
+                    <div class="col-md-8">
+                        {% for category, message in messages %}
+                        <div class="alert alert-{{ 'danger' if category == 'error' else 'success' }} alert-dismissible fade show" role="alert">
+                            {{ message }}
+                            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            {% endif %}
+        {% endwith %}
+
+        <div class="row justify-content-center">
+            <div class="col-lg-8">
+                <div class="card shadow-sm mb-4">
+                    <div class="card-body">
+                        <form id="upload-form" method="post" enctype="multipart/form-data">
+                            <!-- Hidden File Input -->
+                            <input type="file" id="file" name="file" accept="image/png, image/jpeg, image/webp" required hidden>
+
+                            <!-- Custom Upload Area -->
+                            <div id="upload-area" class="text-center p-4 mb-3">
+                                <i class="fas fa-cloud-upload-alt fa-3x text-secondary mb-3"></i>
+                                <p class="mb-2"><strong>Drag & drop</strong> your image here or</p>
+                                <button type="button" id="browse-button" class="btn btn-outline-primary btn-sm">Browse Files</button>
+                                <p id="filename-display" class="text-muted mt-2 small"></p>
+                            </div>
+
+                            <!-- Image Preview -->
+                            <div id="image-preview-container" class="mb-3" style="display: none;">
+                                <p class="text-center small mb-1">Image Preview:</p>
+                                <img id="image-preview" src="#" alt="Image Preview" class="img-thumbnail mx-auto d-block" style="max-height: 150px;"/>
+                            </div>
+
+                            <div class="mb-3">
+                                <label for="filter" class="form-label"><i class="fas fa-filter me-1"></i> Choose Filter:</label>
+                                <select id="filter" name="filter" class="form-select">
+                                     <option value="adaptive_threshold" {% if not selected_filter or selected_filter == 'adaptive_threshold' %}selected{% endif %}>Adaptive Threshold (B&W Scan)</option>
+                                     <option value="grayscale" {% if selected_filter == 'grayscale' %}selected{% endif %}>Grayscale</option>
+                                     <option value="color" {% if selected_filter == 'color' %}selected{% endif %}>Color (Warped)</option>
+                                </select>
+                            </div>
+
+                            <div class="d-grid">
+                                <button type="submit" id="submit-button" class="btn btn-primary btn-lg">
+                                    <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true" style="display: none;"></span>
+                                    <i class="fas fa-cogs me-1"></i> Scan Document
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div> <!-- End Card -->
+            </div>
+        </div>
+
+        <!-- Results Area -->
+        {% if original_filename and processed_filename %}
+        <hr class="my-5">
+        <h2 class="text-center mb-4">Processing Results</h2>
+        <div class="row g-4 justify-content-center">
+            <div class="col-md-6 col-lg-5">
+                <div class="card h-100 shadow-sm result-card">
+                     <div class="card-header text-center fw-bold">Original Image</div>
+                    <div class="card-body text-center">
+                        <img src="{{ url_for('serve_original_image', filename=original_filename) }}" alt="Original Image" class="img-fluid rounded mb-3">
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6 col-lg-5">
+                 <div class="card h-100 shadow-sm result-card">
+                     <div class="card-header text-center fw-bold">Processed Image</div>
+                    <div class="card-body text-center">
+                        <img src="{{ url_for('serve_processed_image', filename=processed_filename) }}" alt="Processed Image" class="img-fluid rounded mb-3">
+                         <a href="{{ url_for('download_processed_image', filename=processed_filename) }}" class="btn btn-success" download>
+                             <i class="fas fa-download me-2"></i>Download Processed
+                         </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+    </div> <!-- End Container -->
+
+    <footer class="text-center text-muted mt-5 mb-3">
+        <small>Document Scanner App © 2024</small>
+    </footer>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js" integrity="sha384-C6RzsynM9kWDrMNeT87bh95OGNyZPhcTNXj1NW7RuBCsyN/o0jlpcV8Qyq46cDfL" crossorigin="anonymous"></script>
+    <script src="{{ url_for('static', filename='js/script.js') }}"></script>
+</body>
+</html>
