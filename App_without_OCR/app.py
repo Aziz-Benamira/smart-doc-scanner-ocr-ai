@@ -71,8 +71,9 @@ def process_document(image, selected_filter="adaptive_threshold" , sigma_1 = 1, 
     edged_uint8 = np.uint8(edged * 255)
     cnts = cv2.findContours(edged_uint8.copy(), cv2.RETR_EXTERNAL , cv2.CHAIN_APPROX_TC89_L1)
     cnts = imutils.grab_contours(cnts)
-    cnts = sorted(cnts, key=lambda c: cv2.countNonZero(cv2.drawContours(np.zeros_like(edged_uint8), [c], -1, (255), thickness=cv2.FILLED)), reverse=True)[:10] 
-    # cnts = sorted(cnts, key=cv2.contourArea, reverse=True)[:10]
+    
+    # cnts = sorted(cnts, key=lambda c: cv2.countNonZero(cv2.drawContours(np.zeros_like(edged_uint8), [c], -1, (255), thickness=cv2.FILLED)), reverse=True)[:10] 
+    cnts = sorted(cnts, key=cv2.contourArea, reverse=True)[:10]
 
     screenCnt = None
     for c in cnts:
@@ -108,7 +109,24 @@ def process_document(image, selected_filter="adaptive_threshold" , sigma_1 = 1, 
              return None, None, "Perspective transform resulted in an empty image."
         processed_output = rgb2gray(warped)
       
-
+    elif selected_filter == "adaptive_threshold_color":
+        # Apply adaptive threshold to each channel, then merge
+        if warped is None or warped.size == 0:
+            return None, None, "Perspective transform resulted in an empty image."
+        try:
+            if warped.shape[2] == 4:
+                warped = warped[:, :, :3]  # Remove alpha if present
+            channels = []
+            block_size = 15
+            for i in range(3):
+                channel = warped[:, :, i]
+                channel_gray = channel / 255.0 if channel.max() > 1 else channel
+                local_thresh = threshold_local(channel_gray, block_size, offset=0.1)
+                channel_bin = ((channel_gray > local_thresh) * 255).astype("uint8")
+                channels.append(channel_bin)
+            processed_output = np.stack(channels, axis=2)
+        except Exception as e:
+            return None, None, f"Error during adaptive threshold color: {e}"
     elif selected_filter == "color":
         processed_output = warped
 
