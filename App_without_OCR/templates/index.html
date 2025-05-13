@@ -99,6 +99,47 @@
                 </div>
             </div>
         </div>
+
+        {% if debug_img1 and debug_img2 %}
+        <div class="text-center mt-4">
+            <button id="debug-toggle-btn" class="btn btn-outline-secondary">
+                <i class="fas fa-bug me-1"></i> Debug
+            </button>
+        </div>
+        <div id="debug-images-row" class="row mt-4 justify-content-center" style="display:none;">
+            <div class="col-md-6 col-lg-5">
+                <div class="card shadow-sm mb-3">
+                    <div class="card-header text-center fw-bold">Contours on Original</div>
+                    <div class="card-body text-center">
+                        <img src="{{ url_for('serve_processed_image', filename=debug_img1) }}" alt="Debug Contours" class="img-fluid rounded">
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6 col-lg-5">
+                <div class="card shadow-sm mb-3">
+                    <div class="card-header text-center fw-bold">Predicted Corners</div>
+                    <div class="card-body text-center">
+                        <img src="{{ url_for('serve_processed_image', filename=debug_img2) }}" alt="Debug Corners" class="img-fluid rounded">
+                    </div>
+                </div>
+            </div>
+        </div>
+        <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            var btn = document.getElementById('debug-toggle-btn');
+            var row = document.getElementById('debug-images-row');
+            btn.addEventListener('click', function() {
+                if (row.style.display === 'none') {
+                    row.style.display = '';
+                    btn.classList.add('active');
+                } else {
+                    row.style.display = 'none';
+                    btn.classList.remove('active');
+                }
+            });
+        });
+        </script>
+        {% endif %}
         {% endif %}
 
     </div> <!-- End Container -->

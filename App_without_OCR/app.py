@@ -10,8 +10,8 @@ from skimage.feature import canny
 from skimage.transform import resize, rescale
 import matplotlib.pyplot as plt
 from flask import Flask, render_template, request, redirect, url_for, send_from_directory, flash
-
-
+import matplotlib
+matplotlib.use('Agg')
 
 sigma_list = [(1,2),  (0.5,1.5) ,  (0.5,2.2), (0.5,2.5), (1.5, 2)]
 # --- Helper Functions (Copy order_points and four_point_transform here) ---
@@ -49,7 +49,7 @@ def four_point_transform(image, pts):
         [maxWidth - 1, maxHeight - 1],
         [0, maxHeight - 1]
     ], dtype="float32")
-    print(dst)
+    
     # Perspective transform
     M = cv2.getPerspectiveTransform(rect, dst)
     warped = cv2.warpPerspective(image, M, (maxWidth, maxHeight))
@@ -88,7 +88,7 @@ def process_document(image, selected_filter="adaptive_threshold" , sigma_1 = 1, 
     
     
     warped = four_point_transform(orig,screenCnt_original )
-    plt.imsave('warped.png', warped, cmap='gray')
+    # plt.imsave('warped.png', warped, cmap='gray')
     
     processed_output = None
     if selected_filter == "adaptive_threshold":
@@ -122,7 +122,7 @@ def process_document(image, selected_filter="adaptive_threshold" , sigma_1 = 1, 
     if processed_output is None or processed_output.size == 0:
         return None, None, "Processing failed to produce an output image."
 
-    return processed_output, None , screenCnt_original
+    return processed_output, None , screenCnt_original, [c/ratio for c in cnts]
 
 
 # --- Flask App Setup ---
@@ -186,15 +186,13 @@ def index():
                
                 for sigma_1, sigma_2 in sigma_list:
                     try :
-                        processed_image, error_msg , screenCnt_original = process_document(image_cv, selected_filter, sigma_1, sigma_2)
+                        processed_image, error_msg , screenCnt_original, cnts = process_document(image_cv, selected_filter, sigma_1, sigma_2)
                         if not error_msg: 
                             break
                     except :
                         pass
                 
-                 
-                print(screenCnt_original)
-                print(order_points(screenCnt_original))
+        
 
                 if error_msg:
                     flash(f'Processing Error: {error_msg}', 'error')
@@ -212,13 +210,54 @@ def index():
                 # Save the processed image (use JPG for broad compatibility)
                 plt.imsave(processed_path, processed_image, cmap='gray' if selected_filter != 'color' else None, format='png')
 
+                # --- Always generate debug images after successful processing ---
+                debug_img1_filename = f"{original_filename_base}_debug1.png"
+                debug_img2_filename = f"{original_filename_base}_debug2.png"
+                debug_img1_path = os.path.join(app.config['PROCESSED_FOLDER'], debug_img1_filename)
+                debug_img2_path = os.path.join(app.config['PROCESSED_FOLDER'], debug_img2_filename)
+                try:
+                    # Debug image 1: contours on original image
+                    fig, ax = plt.subplots()
+                    ax.imshow(image_cv)
+                    colors = ['red', 'green', 'blue', 'yellow', 'magenta']
+                    for i, c in enumerate(cnts):
+                        x, y = zip(*c[:, 0, :])
+                        color = colors[i % len(colors)]
+                        ax.plot(x, y, color=color, linewidth=2)
+                    ax.axis('off')
+                    plt.tight_layout()
+                    plt.savefig(debug_img1_path, bbox_inches='tight', pad_inches=0)
+                    plt.close(fig)
+                except Exception:
+                    debug_img1_filename = None
+
+                try:
+                    # Debug image 2: predicted corners
+                    fig2, ax2 = plt.subplots()
+                    ax2.imshow(image_cv)
+                    points = order_points(screenCnt_original)
+                    for i in range(len(points)):
+                        x_values = [points[i][0], points[(i + 1) % len(points)][0]]
+                        y_values = [points[i][1], points[(i + 1) % len(points)][1]]
+                        ax2.plot(x_values, y_values, color='red', linestyle=':', linewidth=2)
+                    for i, point in enumerate(points):
+                        ax2.scatter([point[0]], [point[1]], color='red')
+                    ax2.axis('off')
+                    plt.tight_layout()
+                    plt.savefig(debug_img2_path, bbox_inches='tight', pad_inches=0)
+                    plt.close(fig2)
+                except Exception:
+                    debug_img2_filename = None
+
                 flash('Image processed successfully!', 'success')
 
                 # Render template with results
                 return render_template('index.html',
                                        original_filename=original_filename,
                                        processed_filename=processed_filename,
-                                       selected_filter=selected_filter)
+                                       selected_filter=selected_filter,
+                                       debug_img1=debug_img1_filename,
+                                       debug_img2=debug_img2_filename)
 
             except Exception as e:
                 flash(f'An unexpected error occurred: {str(e)}', 'error')
