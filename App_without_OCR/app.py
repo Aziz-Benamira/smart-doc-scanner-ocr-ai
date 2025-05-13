@@ -3,93 +3,117 @@ import uuid
 import cv2
 import numpy as np
 import imutils
+from skimage import io
+from skimage.color import rgb2gray
+from skimage.filters import gaussian, threshold_local
+from skimage.feature import canny
+from skimage.transform import resize, rescale
+import matplotlib.pyplot as plt
 from flask import Flask, render_template, request, redirect, url_for, send_from_directory, flash
 
+
+
+sigma_list = [(1,2), (0.5,2.2), (0.5,2.5), (1.5, 2)]
 # --- Helper Functions (Copy order_points and four_point_transform here) ---
 def order_points(pts):
-    # ... (copy function code from above) ...
-    rect = np.zeros((4, 2), dtype="float32")
-    s = pts.sum(axis=1)
-    diff = np.diff(pts, axis=1)
-    rect[0] = pts[np.argmin(s)]
-    rect[2] = pts[np.argmax(s)]
-    rect[1] = pts[np.argmin(diff)]
-    rect[3] = pts[np.argmax(diff)]
-    return rect
+    # Convert to list for easier manipulation
+    pts = np.array(pts, dtype="float32").tolist()
+    
+    # Bottom-left: smallest x, then largest y
+    bl = sorted(pts, key=lambda p: (p[0], -p[1]))[0]  # -p[1] for largest y
+    remaining = [p for p in pts if p != bl]
+    
+    # Top-left: smallest y, then smallest x
+    tl = sorted(remaining, key=lambda p: (p[1], p[0]))[0]
+    remaining = [p for p in remaining if p != tl]
+    
+    # Top-right: smallest y, then largest x
+    tr = sorted(remaining, key=lambda p: (p[1], -p[0]))[0]
+    remaining = [p for p in remaining if p != tr]
+    
+    # Bottom-right: remaining point
+    br = remaining[0]
+    
+    return np.array([tl, tr, br, bl], dtype="float32")
 
 def four_point_transform(image, pts):
-    # ... (copy function code from above) ...
     rect = order_points(pts)
     (tl, tr, br, bl) = rect
+
+    # Compute width and height
     widthA = np.linalg.norm(br - bl)
     widthB = np.linalg.norm(tr - tl)
     maxWidth = max(int(widthA), int(widthB))
+
     heightA = np.linalg.norm(tr - br)
     heightB = np.linalg.norm(tl - bl)
     maxHeight = max(int(heightA), int(heightB))
+
     dst = np.array([
         [0, 0],
         [maxWidth - 1, 0],
         [maxWidth - 1, maxHeight - 1],
         [0, maxHeight - 1]
     ], dtype="float32")
+    print(dst)
+    # Perspective transform
     M = cv2.getPerspectiveTransform(rect, dst)
     warped = cv2.warpPerspective(image, M, (maxWidth, maxHeight))
     return warped
 
 # --- Core Processing Function (Copy process_document here) ---
-def process_document(image_cv, selected_filter="adaptive_threshold"):
+def process_document(image, selected_filter="adaptive_threshold" , sigma_1 = 1, sigma_2 = 2):
     # ... (copy function code from above) ...
-    orig = image_cv.copy()
-    ratio = image_cv.shape[0] / 500.0
-    image_resized = imutils.resize(image_cv, height=500)
-
-    gray = cv2.cvtColor(image_resized, cv2.COLOR_BGR2GRAY)
-    gray = cv2.GaussianBlur(gray, (5, 5), 0)
-    edged = cv2.Canny(gray, 75, 200)
-
-    cnts = cv2.findContours(edged.copy(), cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
+    orig = image.copy()
+    ratio = 1/(image.shape[0] / 600.0)
+    image_resized = rescale(image,ratio,channel_axis=2)
+    image_resized_uint8 = np.uint8(image_resized * 255)
+    gray = rgb2gray(image_resized)
+    # Couple de sigma
+    blurred_skimage = gaussian(gray, sigma=sigma_1)
+    edged = canny(blurred_skimage, sigma=sigma_2)
+    
+    
+    edged_uint8 = np.uint8(edged * 255)
+    cnts = cv2.findContours(edged_uint8.copy(), cv2.RETR_EXTERNAL , cv2.CHAIN_APPROX_TC89_L1)
     cnts = imutils.grab_contours(cnts)
-    cnts = sorted(cnts, key=cv2.contourArea, reverse=True)[:5]
+    cnts = sorted(cnts, key=lambda c: cv2.countNonZero(cv2.drawContours(np.zeros_like(edged_uint8), [c], -1, (255), thickness=cv2.FILLED)), reverse=True)[:10] 
+    # cnts = sorted(cnts, key=cv2.contourArea, reverse=True)[:10]
 
     screenCnt = None
     for c in cnts:
         peri = cv2.arcLength(c, True)
         approx = cv2.approxPolyDP(c, 0.02 * peri, True)
         if len(approx) == 4:
-             # Extra check: Ensure the contour area is reasonably large
-            if cv2.contourArea(approx) > (image_resized.shape[0] * image_resized.shape[1] * 0.05): # Reduced threshold slightly
-               screenCnt = approx
-               break
-
-    if screenCnt is None:
-        return None, None, "Could not find a 4-point document contour. Try a different image or adjust lighting."
-
-    try:
-        warped = four_point_transform(orig, screenCnt.reshape(4, 2) * ratio)
-    except Exception as e:
-        # Catch potential errors during transformation (e.g., degenerate quad)
-        return None, None, f"Error during perspective transform: {e}. Ensure points form a valid quadrilateral."
-
-
+            screenCnt = approx
+            screenCnt=screenCnt.reshape(4,-1)
+            break
+    else:
+        raise ValueError("Document contour not found.")
+    screenCnt_original = screenCnt / ratio
+    
+    
+    warped = four_point_transform(orig,screenCnt_original )
+    
+    
     processed_output = None
     if selected_filter == "adaptive_threshold":
         # Ensure warped isn't empty before processing
         if warped is None or warped.size == 0:
              return None, None, "Perspective transform resulted in an empty image."
         try:
-            warped_gray = cv2.cvtColor(warped, cv2.COLOR_BGR2GRAY)
-            processed_output = cv2.adaptiveThreshold(warped_gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-                                              cv2.THRESH_BINARY, 11, 10)
-            processed_output = cv2.cvtColor(processed_output, cv2.COLOR_GRAY2BGR) # Keep 3 channels for consistency
+            warped_gray = rgb2gray(warped)
+            block_size = 15
+            local_thresh = threshold_local(warped_gray, block_size, offset=0.1)
+            processed_output = ((warped_gray > local_thresh)*255).astype("uint8")
         except cv2.error as e:
             return None, None, f"OpenCV error during thresholding: {e}"
 
     elif selected_filter == "grayscale":
         if warped is None or warped.size == 0:
              return None, None, "Perspective transform resulted in an empty image."
-        processed_output = cv2.cvtColor(warped, cv2.COLOR_BGR2GRAY)
-        processed_output = cv2.cvtColor(processed_output, cv2.COLOR_GRAY2BGR)
+        processed_output = rgb2gray(warped)
+      
 
     elif selected_filter == "color":
         processed_output = warped
@@ -98,20 +122,22 @@ def process_document(image_cv, selected_filter="adaptive_threshold"):
          processed_output = warped
 
     # Resize original for display - use the initially loaded 'orig'
-    orig_display = imutils.resize(orig, height=650)
+
 
     # Final check on processed output
     if processed_output is None or processed_output.size == 0:
         return None, None, "Processing failed to produce an output image."
 
-    return processed_output, orig_display, None
+    return processed_output, None
 
 
 # --- Flask App Setup ---
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'your_very_secret_key' # Change this!
-app.config['UPLOAD_FOLDER'] = 'uploads'
-app.config['PROCESSED_FOLDER'] = 'processed'
+# So that  app works even if ran from outside folder
+BASE_DIR = os.path.abspath(os.path.dirname(__file__))
+app.config['UPLOAD_FOLDER'] = os.path.join(BASE_DIR, 'uploads')
+app.config['PROCESSED_FOLDER'] = os.path.join(BASE_DIR, 'processed')
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max upload size
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'webp'}
 
@@ -150,7 +176,7 @@ def index():
                 file.save(original_path)
 
                 # Read image with OpenCV
-                image_cv = cv2.imread(original_path)
+                image_cv = io.imread(original_path)
                 if image_cv is None:
                     flash('Could not read uploaded image file. It might be corrupted or in an unsupported format.', 'error')
                     # Clean up saved file if reading failed
@@ -162,7 +188,12 @@ def index():
                 selected_filter = request.form.get('filter', 'adaptive_threshold') # Get selected filter
 
                 # Process the document
-                processed_image, _, error_msg = process_document(image_cv, selected_filter) # We don't need orig_display here
+                processed_image, error_msg = process_document(image_cv, selected_filter)
+                
+                for sigma_1, sigma_2 in sigma_list:
+                    processed_image, error_msg = process_document(image_cv, selected_filter, sigma_1, sigma_2)
+                    if not error_msg:
+                        break
 
                 if error_msg:
                     flash(f'Processing Error: {error_msg}', 'error')
@@ -178,7 +209,7 @@ def index():
                      return redirect(request.url)
 
                 # Save the processed image (use JPG for broad compatibility)
-                cv2.imwrite(processed_path, processed_image, [int(cv2.IMWRITE_JPEG_QUALITY), 90]) # Save with quality 90
+                plt.imsave(processed_path, processed_image, cmap='gray' if selected_filter != 'color' else None, format='png')
 
                 flash('Image processed successfully!', 'success')
 
