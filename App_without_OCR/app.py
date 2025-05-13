@@ -13,27 +13,21 @@ from flask import Flask, render_template, request, redirect, url_for, send_from_
 
 
 
-sigma_list = [(1,2), (0.5,2.2), (0.5,2.5), (1.5, 2)]
+sigma_list = [(1,2),  (0.5,1.5) ,  (0.5,2.2), (0.5,2.5), (1.5, 2)]
 # --- Helper Functions (Copy order_points and four_point_transform here) ---
 def order_points(pts):
-    # Convert to list for easier manipulation
-    pts = np.array(pts, dtype="float32").tolist()
-    
-    # Bottom-left: smallest x, then largest y
-    bl = sorted(pts, key=lambda p: (p[0], -p[1]))[0]  # -p[1] for largest y
-    remaining = [p for p in pts if p != bl]
-    
-    # Top-left: smallest y, then smallest x
-    tl = sorted(remaining, key=lambda p: (p[1], p[0]))[0]
-    remaining = [p for p in remaining if p != tl]
-    
-    # Top-right: smallest y, then largest x
-    tr = sorted(remaining, key=lambda p: (p[1], -p[0]))[0]
-    remaining = [p for p in remaining if p != tr]
-    
-    # Bottom-right: remaining point
-    br = remaining[0]
-    
+    pts = np.array(pts, dtype="float32")
+    # sort by y (vertical)
+    y_sorted = pts[np.argsort(pts[:, 1]), :]
+
+    # top two (smallest y), bottom two (largest y)
+    top_two = y_sorted[:2, :]
+    bottom_two = y_sorted[2:, :]
+
+    # sort each pair by x (horizontal)
+    tl, tr = top_two[np.argsort(top_two[:, 0]), :]
+    bl, br = bottom_two[np.argsort(bottom_two[:, 0]), :]
+
     return np.array([tl, tr, br, bl], dtype="float32")
 
 def four_point_transform(image, pts):
@@ -94,7 +88,7 @@ def process_document(image, selected_filter="adaptive_threshold" , sigma_1 = 1, 
     
     
     warped = four_point_transform(orig,screenCnt_original )
-    
+    plt.imsave('warped.png', warped, cmap='gray')
     
     processed_output = None
     if selected_filter == "adaptive_threshold":
@@ -128,7 +122,7 @@ def process_document(image, selected_filter="adaptive_threshold" , sigma_1 = 1, 
     if processed_output is None or processed_output.size == 0:
         return None, None, "Processing failed to produce an output image."
 
-    return processed_output, None
+    return processed_output, None , screenCnt_original
 
 
 # --- Flask App Setup ---
@@ -188,12 +182,19 @@ def index():
                 selected_filter = request.form.get('filter', 'adaptive_threshold') # Get selected filter
 
                 # Process the document
-                processed_image, error_msg = process_document(image_cv, selected_filter)
-                
+                first_success = None
+               
                 for sigma_1, sigma_2 in sigma_list:
-                    processed_image, error_msg = process_document(image_cv, selected_filter, sigma_1, sigma_2)
-                    if not error_msg:
-                        break
+                    try :
+                        processed_image, error_msg , screenCnt_original = process_document(image_cv, selected_filter, sigma_1, sigma_2)
+                        if not error_msg: 
+                            break
+                    except :
+                        pass
+                
+                 
+                print(screenCnt_original)
+                print(order_points(screenCnt_original))
 
                 if error_msg:
                     flash(f'Processing Error: {error_msg}', 'error')
